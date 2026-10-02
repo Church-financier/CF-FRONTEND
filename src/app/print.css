@@ -1,0 +1,478 @@
+/*
+ * Print stylesheet for generated documents.
+ *
+ * The receipt and voucher are rendered as HTML in a modal so the user can
+ * review them on screen and print them with the browser's own dialog. Two
+ * problems dominate here:
+ *
+ *  1. Browsers drop background colours by default, which would erase the navy
+ *     header bands and total banners. `print-color-adjust: exact` forces them
+ *     to survive, and the same rules are repeated on the coloured elements
+ *     because Safari still needs the vendor prefix.
+ *  2. Screen furniture (sidebar, headers, buttons) must not reach the paper,
+ *     and the sheet must not clip or overflow.
+ *
+ * Page geometry is A4 with 12mm margins, matching the server-rendered PDFs.
+ */
+
+:root {
+  --print-ink: #334155;
+  --print-primary: #1e293b;
+  --print-stripe: #f8fafc;
+  --print-border: #e2e8f0;
+  --print-muted: #94a3b8;
+  --print-success: #059669;
+  --print-warning: #d97706;
+  --print-danger: #dc2626;
+}
+
+/* The on-screen preview: a white sheet floating on a neutral backdrop. */
+.print-sheet {
+  background: #ffffff;
+  color: var(--print-ink);
+  width: 210mm;
+  min-height: 297mm;
+  padding: 12mm;
+  margin: 0 auto;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.12);
+  box-sizing: border-box;
+}
+
+@media screen {
+  .print-sheet {
+    max-width: 100%;
+    overflow-x: auto;
+  }
+}
+
+@media print {
+  @page {
+    size: A4;
+    margin: 12mm;
+  }
+
+  html,
+  body {
+    background: #ffffff !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
+  /* Hide every piece of app chrome: sidebars, headers, action buttons. */
+  nav,
+  aside,
+  [data-print-hide],
+  header[data-print-hide] {
+    display: none !important;
+  }
+
+  .print-root {
+    position: static !important;
+    display: block !important;
+    overflow: visible !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    background: #ffffff !important;
+  }
+
+  .print-sheet {
+    box-shadow: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    width: 100% !important;
+    min-height: 0 !important;
+    max-width: 100% !important;
+    overflow: visible !important;
+  }
+
+  /* Force background colours and images to print. */
+  *,
+  *::before,
+  *::after {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  /* Never let a long value push the sheet wider than the paper. */
+  .print-sheet,
+  .print-sheet * {
+    max-width: 100% !important;
+    box-sizing: border-box !important;
+  }
+
+  .print-truncate {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* Keep a row's cells together instead of splitting across a page break. */
+  tr,
+  .print-avoid-break {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  thead {
+    display: table-header-group;
+  }
+
+  a[href]::after {
+    content: '';
+  }
+}
+
+/* ---------------------------------------------------------------------------
+ * Document furniture shared by the receipt and voucher templates.
+ * ------------------------------------------------------------------------- */
+
+.print-doc-header {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  background: var(--print-primary);
+  color: #ffffff;
+  border-radius: 6px;
+  padding: 12px 14px;
+}
+
+.print-doc-logo {
+  width: 46px;
+  height: 46px;
+  border-radius: 4px;
+  background: #ffffff;
+  color: var(--print-primary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 20px;
+  flex-shrink: 0;
+  overflow: hidden;
+}
+
+.print-doc-logo img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.print-doc-org {
+  min-width: 0;
+  flex: 1;
+}
+
+.print-doc-org-name {
+  font-weight: 700;
+  font-size: 13px;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  line-height: 1.2;
+}
+
+.print-doc-title {
+  font-size: 10px;
+  font-weight: 600;
+  opacity: 0.95;
+  margin-top: 2px;
+}
+
+.print-doc-contact {
+  font-size: 7.5px;
+  margin-top: 3px;
+  opacity: 0.85;
+  line-height: 1.35;
+}
+
+.print-doc-ref {
+  text-align: right;
+  flex-shrink: 0;
+  font-size: 8px;
+  line-height: 1.5;
+}
+
+.print-doc-ref-label {
+  font-size: 6.5px;
+  text-transform: uppercase;
+  opacity: 0.75;
+}
+
+.print-doc-ref-value {
+  font-weight: 700;
+  font-size: 9px;
+}
+
+.print-meta-bar {
+  display: flex;
+  border: 1px solid var(--print-border);
+  border-radius: 4px;
+  background: var(--print-stripe);
+  margin-top: 12px;
+  overflow: hidden;
+}
+
+.print-meta-cell {
+  flex: 1;
+  padding: 7px 6px;
+  text-align: center;
+  border-left: 1px solid var(--print-border);
+  min-width: 0;
+}
+
+.print-meta-cell:first-child {
+  border-left: 0;
+}
+
+.print-meta-label {
+  font-size: 6.5px;
+  text-transform: uppercase;
+  color: var(--print-muted);
+  letter-spacing: 0.04em;
+}
+
+.print-meta-value {
+  font-size: 9px;
+  font-weight: 700;
+  color: var(--print-ink);
+  margin-top: 2px;
+}
+
+.print-status-row {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.print-status-label {
+  font-size: 6.5px;
+  text-transform: uppercase;
+  color: var(--print-muted);
+}
+
+.print-status-badge {
+  display: inline-block;
+  background: var(--print-success);
+  color: #ffffff;
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  padding: 5px 14px;
+  border-radius: 3px;
+}
+
+.print-total-banner {
+  margin-top: 12px;
+  border: 1px solid var(--print-border);
+  border-radius: 4px;
+  background: var(--print-stripe);
+  padding: 10px 12px;
+  text-align: center;
+}
+
+.print-total-label {
+  font-size: 7.5px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--print-muted);
+}
+
+.print-total-amount {
+  font-size: 24px;
+  font-weight: 700;
+  color: var(--print-primary);
+  line-height: 1.15;
+  margin-top: 2px;
+}
+
+.print-total-note {
+  font-size: 7px;
+  font-style: italic;
+  color: var(--print-muted);
+  margin-top: 3px;
+}
+
+.print-section-title {
+  font-size: 7px;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--print-muted);
+  margin: 14px 0 5px;
+}
+
+.print-table {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+}
+
+.print-table thead th {
+  background: var(--print-primary);
+  color: #ffffff;
+  font-size: 6.8px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  padding: 6px 7px;
+  text-align: left;
+  border: 1px solid var(--print-primary);
+}
+
+.print-table tbody td {
+  font-size: 8px;
+  padding: 5px 7px;
+  border: 1px solid var(--print-border);
+  vertical-align: middle;
+  word-break: break-word;
+}
+
+.print-table tbody tr:nth-child(even) {
+  background: var(--print-stripe);
+}
+
+.print-table .print-num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.print-table .print-center {
+  text-align: center;
+}
+
+.print-table tfoot td {
+  background: var(--print-primary);
+  color: #ffffff;
+  font-size: 8.5px;
+  font-weight: 700;
+  padding: 6px 7px;
+  border: 1px solid var(--print-primary);
+}
+
+.print-definitions {
+  border: 1px solid var(--print-border);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.print-definitions > div {
+  display: flex;
+  border-top: 1px solid var(--print-border);
+}
+
+.print-definitions > div:first-child {
+  border-top: 0;
+}
+
+.print-definitions > div:nth-child(even) {
+  background: var(--print-stripe);
+}
+
+.print-def-label {
+  width: 38%;
+  font-size: 6.8px;
+  text-transform: uppercase;
+  color: var(--print-muted);
+  padding: 6px 9px;
+  flex-shrink: 0;
+}
+
+.print-def-value {
+  width: 62%;
+  font-size: 8.5px;
+  color: var(--print-ink);
+  padding: 6px 9px;
+  word-break: break-word;
+}
+
+.print-def-value strong {
+  color: var(--print-primary);
+  font-size: 9.5px;
+}
+
+.print-audit-footer {
+  display: flex;
+  gap: 16px;
+  margin-top: 22px;
+  align-items: flex-start;
+}
+
+.print-signatures {
+  display: flex;
+  gap: 16px;
+  flex: 1;
+  min-width: 0;
+}
+
+.print-signature {
+  flex: 1;
+  min-width: 0;
+  text-align: center;
+}
+
+.print-signature-rule {
+  border-top: 1px solid var(--print-border);
+  margin-bottom: 5px;
+}
+
+.print-signature-role {
+  font-size: 7.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: var(--print-ink);
+}
+
+.print-signature-hint {
+  font-size: 6.5px;
+  color: var(--print-muted);
+  margin-top: 1px;
+}
+
+.print-signature-name {
+  font-size: 6.5px;
+  font-style: italic;
+  color: var(--print-muted);
+  margin-top: 1px;
+}
+
+.print-verification {
+  width: 108px;
+  flex-shrink: 0;
+  text-align: right;
+}
+
+.print-qr {
+  width: 56px;
+  height: 56px;
+  margin-left: auto;
+  border: 1px solid var(--print-border);
+  display: block;
+}
+
+.print-verification-label {
+  font-size: 6.2px;
+  font-weight: 700;
+  color: var(--print-ink);
+  margin-top: 3px;
+}
+
+.print-verification-hash {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 4.8px;
+  color: var(--print-muted);
+  line-height: 1.3;
+  word-break: break-all;
+  margin-top: 1px;
+}
+
+.print-footer-strip {
+  margin-top: 16px;
+  border-top: 1px solid var(--print-border);
+  padding-top: 5px;
+  text-align: center;
+  font-size: 6.4px;
+  color: var(--print-muted);
+  line-height: 1.5;
+}

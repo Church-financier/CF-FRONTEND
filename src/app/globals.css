@@ -1,0 +1,73 @@
+@import "tailwindcss";
+
+@theme {
+  --color-border: hsl(214.3 31.8% 91.4%);
+  --color-input: hsl(214.3 31.8% 91.4%);
+  --color-ring: hsl(222.2 84% 4.9%);
+  --color-background: #F8FAFC;
+  --color-foreground: hsl(222.2 84% 4.9%);
+  --color-primary: #0F172A;
+  --color-primary-foreground: hsl(210 40% 98%);
+  --color-secondary: #1E293B;
+  --color-secondary-foreground: hsl(210 40% 98%);
+  --color-destructive: #E11D48;
+  --color-destructive-foreground: hsl(210 40% 98%);
+  --color-muted: #F8FAFC;
+  --color-muted-foreground: hsl(215.4 16.3% 46.9%);
+  --color-accent: #4F46E5;
+  --color-accent-foreground: hsl(210 40% 98%);
+  --color-popover: #F8FAFC;
+  --color-popover-foreground: hsl(222.2 84% 4.9%);
+  --color-card: #FFFFFF;
+  --color-card-foreground: hsl(222.2 84% 4.9%);
+
+  --color-income: #059669;
+  --color-warning: #D97706;
+  --color-expense: #E11D48;
+  --color-surface: #F8FAFC;
+
+  --color-brand-navy: #0F172A;
+  --color-brand-slate: #1E293B;
+  --color-brand-indigo: #4F46E5;
+  --color-financial-income: #059669;
+  --color-financial-pending: #D97706;
+  --color-financial-expense: #E11D48;
+  --color-surface-bg: #F8FAFC;
+
+  --color-navy-50: #f0f4f8;
+  --color-navy-100: #d9e2ec;
+  --color-navy-200: #bcccdc;
+  --color-navy-300: #9fb3c8;
+  --color-navy-400: #829ab1;
+  --color-navy-500: #627d98;
+  --color-navy-600: #486581;
+  --color-navy-700: #334e68;
+  --color-navy-800: #243b53;
+  --color-navy-900: #102a43;
+  --color-navy-950: #061826;
+
+  --color-gold-50: #fdfbf0;
+  --color-gold-100: #f9f3d8;
+  --color-gold-200: #f3e6b0;
+  --color-gold-300: #e8d580;
+  --color-gold-400: #ddc44d;
+  --color-gold-500: #d4af37;
+  --color-gold-600: #b8962f;
+  --color-gold-700: #9a7f27;
+  --color-gold-800: #7d671f;
+  --color-gold-900: #655118;
+
+  --radius-lg: 0.5rem;
+  --radius-md: calc(0.5rem - 2px);
+  --radius-sm: calc(0.5rem - 4px);
+}
+
+@layer base {
+  * {
+    border-color: var(--color-border);
+  }
+  body {
+    background-color: var(--color-background);
+    color: var(--color-foreground);
+  }
+}
