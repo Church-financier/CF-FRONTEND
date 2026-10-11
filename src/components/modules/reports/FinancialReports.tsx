@@ -393,7 +393,7 @@ const DEPARTMENT_HEAD_REPORTS: ReportType[] = ['budget-vs-actual'];
 
 function GeneralReports() {
   const { user } = useAuthStore();
-  const isDepartmentHead = user?.role === 'DEPARTMENT_HEAD';
+  const isDepartmentHead = isRole(user?.role, 'DEPARTMENT_HEAD');
   const reportTypeOptions = isDepartmentHead
     ? REPORT_TYPE_OPTIONS.filter((option) => DEPARTMENT_HEAD_REPORTS.includes(option.value))
     : REPORT_TYPE_OPTIONS;

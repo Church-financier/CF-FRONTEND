@@ -11,9 +11,10 @@ import {
 } from '@/components/ui/dialog';
 import { apiFetch } from '@/lib/api';
 import { useCurrency } from '@/hooks/useCurrency';
-import { PermissionGuard, hasPermissionFromStore } from '@/components/PermissionGuard';
+import { WriteGuard, canWrite, canWriteAny } from '@/components/PermissionGuard';
 import { useEffect, useState, useCallback, useMemo } from 'react';
 import { useAuthStore } from '@/store/useAuthStore';
+import { isRole } from '@/lib/permissions';
 
 interface Department {
   id: string;
@@ -69,7 +70,12 @@ export default function BudgetsPage() {
     amount: '',
   });
 
-  const canCreate = hasPermissionFromStore(user?.role, 'budget:create');
+  // Each verb is checked against its own permission. `canWrite` also refuses
+  // read-only roles, so an auditor never sees an allocation control.
+  const canCreate = canWrite(user?.role, 'budget:create');
+  const canUpdate = canWrite(user?.role, 'budget:update');
+  const canDelete = canWrite(user?.role, 'budget:delete');
+  const showActions = canWriteAny(user?.role, ['budget:update', 'budget:delete']);
 
   const loadAll = useCallback(async () => {
     try {
@@ -183,7 +189,7 @@ const years = useMemo(() => {
     return list;
   }, []);
 
-  const isDepartmentHead = user?.role === 'DEPARTMENT_HEAD';
+  const isDepartmentHead = isRole(user?.role, 'DEPARTMENT_HEAD');
   const userDepartmentId = departments.find((d) => d.headId === user?.id)?.id;
 
   const visibleBudgets = useMemo(() => {
@@ -209,135 +215,137 @@ const years = useMemo(() => {
                 </option>
               ))}
             </select>
-            <Dialog
-              open={open}
-              onOpenChange={(v) => {
-                setOpen(v);
-                if (!v) resetForm();
-              }}
-            >
-              <PermissionGuard permission="budget:create" fallback={null}>
-                <Button onClick={openCreate}>Add Budget</Button>
-              </PermissionGuard>
-              <DialogContent>
-                <DialogHeader>
-                  <DialogTitle>
-                    {editingBudget ? 'Edit Budget Allocation' : 'Create Budget Allocation'}
-                  </DialogTitle>
-                </DialogHeader>
-                {error && (
-                  <div className="p-3 text-sm text-red-700 bg-red-50 border border-red-200 rounded-md">
-                    {error}
-                  </div>
-                )}
-                <form onSubmit={handleSubmit} className="space-y-4">
-                  <div>
-                    <label className="block text-sm font-medium text-navy-700 mb-1">
-                      Department
-                    </label>
-                    <select
-                      className="w-full h-10 rounded-md border border-navy-300 bg-white px-3 text-sm"
-                      value={formData.departmentId}
-                      onChange={(e) =>
-                        setFormData({ ...formData, departmentId: e.target.value })
-                      }
-                      required
-                    >
-                      <option value="">Select department…</option>
-                      {departments.map((d) => (
-                        <option key={d.id} value={d.id}>
-                          {d.name}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-navy-700 mb-1">
-                      Fund
-                    </label>
-                    <select
-                      className="w-full h-10 rounded-md border border-navy-300 bg-white px-3 text-sm"
-                      value={formData.fundId}
-                      onChange={(e) => setFormData({ ...formData, fundId: e.target.value })}
-                      required
-                    >
-                      <option value="">Select fund…</option>
-                      {funds.map((f) => (
-                        <option key={f.id} value={f.id}>
-                          {f.name}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <WriteGuard permissions={['budget:create', 'budget:update']}>
+              <Dialog
+                open={open}
+                onOpenChange={(v) => {
+                  setOpen(v);
+                  if (!v) resetForm();
+                }}
+              >
+                <WriteGuard permission="budget:create" fallback={null}>
+                  <Button onClick={openCreate}>Add Budget</Button>
+                </WriteGuard>
+                <DialogContent>
+                  <DialogHeader>
+                    <DialogTitle>
+                      {editingBudget ? 'Edit Budget Allocation' : 'Create Budget Allocation'}
+                    </DialogTitle>
+                  </DialogHeader>
+                  {error && (
+                    <div className="p-3 text-sm text-red-700 bg-red-50 border border-red-200 rounded-md">
+                      {error}
+                    </div>
+                  )}
+                  <form onSubmit={handleSubmit} className="space-y-4">
                     <div>
                       <label className="block text-sm font-medium text-navy-700 mb-1">
-                        Fiscal Year
+                        Department
                       </label>
                       <select
                         className="w-full h-10 rounded-md border border-navy-300 bg-white px-3 text-sm"
-                        value={formData.fiscalYear}
+                        value={formData.departmentId}
                         onChange={(e) =>
-                          setFormData({ ...formData, fiscalYear: Number(e.target.value) })
+                          setFormData({ ...formData, departmentId: e.target.value })
                         }
+                        required
                       >
-                        {years.map((y) => (
-                          <option key={y} value={y}>
-                            {y}
+                        <option value="">Select department…</option>
+                        {departments.map((d) => (
+                          <option key={d.id} value={d.id}>
+                            {d.name}
                           </option>
                         ))}
                       </select>
                     </div>
                     <div>
                       <label className="block text-sm font-medium text-navy-700 mb-1">
-                        Month
+                        Fund
                       </label>
                       <select
                         className="w-full h-10 rounded-md border border-navy-300 bg-white px-3 text-sm"
-                        value={formData.month}
-                        onChange={(e) =>
-                          setFormData({ ...formData, month: Number(e.target.value) })
-                        }
+                        value={formData.fundId}
+                        onChange={(e) => setFormData({ ...formData, fundId: e.target.value })}
+                        required
                       >
-                        {MONTHS.map((name, i) => (
-                          <option key={name} value={i + 1}>
-                            {name}
+                        <option value="">Select fund…</option>
+                        {funds.map((f) => (
+                          <option key={f.id} value={f.id}>
+                            {f.name}
                           </option>
                         ))}
                       </select>
                     </div>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-navy-700 mb-1">
-                      Amount ({code})
-                    </label>
-                    <Input
-                      type="text"
-                      inputMode="decimal"
-                      value={formData.amount}
-                      onChange={(e) => setFormData({ ...formData, amount: e.target.value })}
-                      placeholder="0.00"
-                      required
-                    />
-                  </div>
-                  <div className="flex justify-end gap-2">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      onClick={() => {
-                        setOpen(false);
-                        resetForm();
-                      }}
-                    >
-                      Cancel
-                    </Button>
-                    <Button type="submit" disabled={submitting}>
-                      {submitting ? 'Saving…' : editingBudget ? 'Update Budget' : 'Create Budget'}
-                    </Button>
-                  </div>
-                </form>
-              </DialogContent>
-            </Dialog>
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                      <div>
+                        <label className="block text-sm font-medium text-navy-700 mb-1">
+                          Fiscal Year
+                        </label>
+                        <select
+                          className="w-full h-10 rounded-md border border-navy-300 bg-white px-3 text-sm"
+                          value={formData.fiscalYear}
+                          onChange={(e) =>
+                            setFormData({ ...formData, fiscalYear: Number(e.target.value) })
+                          }
+                        >
+                          {years.map((y) => (
+                            <option key={y} value={y}>
+                              {y}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-navy-700 mb-1">
+                          Month
+                        </label>
+                        <select
+                          className="w-full h-10 rounded-md border border-navy-300 bg-white px-3 text-sm"
+                          value={formData.month}
+                          onChange={(e) =>
+                            setFormData({ ...formData, month: Number(e.target.value) })
+                          }
+                        >
+                          {MONTHS.map((name, i) => (
+                            <option key={name} value={i + 1}>
+                              {name}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-navy-700 mb-1">
+                        Amount ({code})
+                      </label>
+                      <Input
+                        type="text"
+                        inputMode="decimal"
+                        value={formData.amount}
+                        onChange={(e) => setFormData({ ...formData, amount: e.target.value })}
+                        placeholder="0.00"
+                        required
+                      />
+                    </div>
+                    <div className="flex justify-end gap-2">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() => {
+                          setOpen(false);
+                          resetForm();
+                        }}
+                      >
+                        Cancel
+                      </Button>
+                      <Button type="submit" disabled={submitting}>
+                        {submitting ? 'Saving…' : editingBudget ? 'Update Budget' : 'Create Budget'}
+                      </Button>
+                    </div>
+                  </form>
+                </DialogContent>
+              </Dialog>
+            </WriteGuard>
           </div>
         }
       />
@@ -372,16 +380,24 @@ const years = useMemo(() => {
                 <th className="px-4 py-3 text-right text-xs font-semibold text-navy-700 uppercase tracking-wider">
                   Allocated Amount
                 </th>
-                <th className="px-4 py-3 text-right text-xs font-semibold text-navy-700 uppercase tracking-wider">
-                  Actions
-                </th>
+                {showActions && (
+                  <th className="px-4 py-3 text-right text-xs font-semibold text-navy-700 uppercase tracking-wider">
+                    Actions
+                  </th>
+                )}
               </tr>
             </thead>
             <tbody className="divide-y divide-navy-200">
               {visibleBudgets.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="px-4 py-8 text-center text-navy-500">
-                    No budget allocations yet for {filterYear}. Click <strong>Add Budget</strong> to set one.
+                  <td colSpan={showActions ? 5 : 4} className="px-4 py-8 text-center text-navy-500">
+                    {canCreate ? (
+                      <>
+                        No budget allocations yet for {filterYear}. Click <strong>Add Budget</strong> to set one.
+                      </>
+                    ) : (
+                      <>No budget allocations yet for {filterYear}.</>
+                    )}
                   </td>
                 </tr>
               ) : (
@@ -399,25 +415,27 @@ const years = useMemo(() => {
                     <td className="px-4 py-3 text-sm text-navy-900 font-medium text-right">
                       {format(budget.amountInKobo)}
                     </td>
-                    <td className="px-4 py-3 text-right">
-                      {canCreate ? (
+                    {showActions && (
+                      <td className="px-4 py-3 text-right">
                         <div className="inline-flex gap-2">
-                          <Button size="sm" variant="outline" onClick={() => openEdit(budget)}>
-                            Edit
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className="text-red-700 border-red-300 hover:bg-red-50"
-                            onClick={() => handleDelete(budget.id)}
-                          >
-                            Delete
-                          </Button>
+                          {canUpdate && (
+                            <Button size="sm" variant="outline" onClick={() => openEdit(budget)}>
+                              Edit
+                            </Button>
+                          )}
+                          {canDelete && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="text-red-700 border-red-300 hover:bg-red-50"
+                              onClick={() => handleDelete(budget.id)}
+                            >
+                              Delete
+                            </Button>
+                          )}
                         </div>
-                      ) : (
-                        <span className="text-xs text-navy-400 italic">Read-only</span>
-                      )}
-                    </td>
+                      </td>
+                    )}
                   </tr>
                 ))
               )}

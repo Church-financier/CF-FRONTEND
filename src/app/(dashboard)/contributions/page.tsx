@@ -9,7 +9,8 @@ import { BatchContributionForm } from '@/components/modules/contributions/BatchC
 import { ReceiptDocument, type ReceiptPayload } from '@/components/documents/ReceiptDocument';
 import { apiFetch } from '@/lib/api';
 import { useCurrency } from '@/hooks/useCurrency';
-import { PermissionGuard } from '@/components/PermissionGuard';
+import { WriteGuard, canWriteAny } from '@/components/PermissionGuard';
+import { useAuthStore } from '@/store/useAuthStore';
 
 interface Contribution {
   id: string;
@@ -43,17 +44,26 @@ export default function ContributionsPage() {
   return (
     <div className="space-y-6">
       <Header title="Contributions" />
-      <PermissionGuard permission="contribution:create">
+      <WriteGuard permissions={['contribution:create', 'contribution:batch']} fallback={null}>
         <BatchContributionForm />
-      </PermissionGuard>
+      </WriteGuard>
       <RecentContributions />
     </div>
   );
 }
 
 function RecentContributions() {
+  const { user } = useAuthStore();
   const { format, code, toMinorUnits, toInputValue, inputStep, inputMin } = useCurrency();
   const [contributions, setContributions] = useState<Contribution[]>([]);
+
+  // Auditor: read-only list + receipts. No batch entry, edit, or reverse.
+  const showActions = canWriteAny(user?.role, [
+    'contribution:create',
+    'contribution:batch',
+    'contribution:update',
+    'contribution:delete',
+  ]);
   const [members, setMembers] = useState<MemberOption[]>([]);
   const [funds, setFunds] = useState<FundOption[]>([]);
   const [pledges, setPledges] = useState<PledgeOption[]>([]);
@@ -172,14 +182,15 @@ function RecentContributions() {
     }
   };
 
-  return (
+return (
     <div className="space-y-3">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <h3 className="text-lg font-semibold text-navy-900">Recent Contributions</h3>
-        <Dialog open={!!editing} onOpenChange={(open) => { if (!open) setEditing(null); }}>
-          <DialogContent>
-            <DialogHeader><DialogTitle>Edit Contribution ({code})</DialogTitle></DialogHeader>
-            <form onSubmit={saveEdit} className="space-y-3">
+        <WriteGuard permissions={['contribution:create', 'contribution:update']}>
+          <Dialog open={!!editing} onOpenChange={(open) => { if (!open) setEditing(null); }}>
+            <DialogContent>
+              <DialogHeader><DialogTitle>Edit Contribution ({code})</DialogTitle></DialogHeader>
+              <form onSubmit={saveEdit} className="space-y-3">
               <label className="block text-sm text-navy-700">Member
                 <select value={form.memberId} onChange={(event) => setForm({ ...form, memberId: event.target.value })} className="mt-1 h-9 w-full rounded-md border border-navy-300 bg-white px-3 text-sm">
                   <option value="">Anonymous</option>
@@ -210,6 +221,7 @@ function RecentContributions() {
             </form>
           </DialogContent>
         </Dialog>
+        </WriteGuard>
       </div>
       {error && !editing && <p className="text-sm text-red-700">{error}</p>}
       {loading ? (
@@ -227,13 +239,15 @@ function RecentContributions() {
                 <th className="px-4 py-3 text-left text-xs font-semibold text-navy-700 uppercase tracking-wider">Fund</th>
                 <th className="px-4 py-3 text-left text-xs font-semibold text-navy-700 uppercase tracking-wider">Description</th>
                 <th className="px-4 py-3 text-left text-xs font-semibold text-navy-700 uppercase tracking-wider">Amount</th>
-                <th className="px-4 py-3 text-right text-xs font-semibold text-navy-700 uppercase tracking-wider">Actions</th>
+                {showActions && (
+                  <th className="px-4 py-3 text-right text-xs font-semibold text-navy-700 uppercase tracking-wider">Actions</th>
+                )}
               </tr>
             </thead>
             <tbody className="divide-y divide-navy-200">
               {contributions.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="px-4 py-8 text-center text-navy-500">No contributions yet</td>
+                  <td colSpan={showActions ? 6 : 5} className="px-4 py-8 text-center text-navy-500">No contributions yet</td>
                 </tr>
               ) : (
                 contributions.map((c) => (
@@ -243,33 +257,35 @@ function RecentContributions() {
                     <td className="px-4 py-3 text-sm text-navy-900">{c.fund?.name || '-'}</td>
                     <td className="px-4 py-3 text-sm text-navy-600 truncate max-w-md">{c.description}</td>
                     <td className="px-4 py-3 text-sm text-navy-900 font-medium">{format(Number(c.amountInKobo))}</td>
-                    <td className="px-4 py-3 text-right">
-                      <div className="flex flex-wrap justify-end gap-1">
-                        <PermissionGuard permission="contribution:update">
-                          <Button variant="outline" size="sm" onClick={() => openEdit(c)} disabled={reversingId === c.id}>Edit</Button>
-                        </PermissionGuard>
-                        <PermissionGuard permission="contribution:delete">
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => deleteContribution(c)}
-                            disabled={reversingId === c.id}
-                          >
-                            {reversingId === c.id ? 'Reversing...' : 'Reverse'}
-                          </Button>
-                        </PermissionGuard>
-                        <PermissionGuard permission="contribution:receipt" fallback={null}>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => viewReceipt(c.id)}
-                            disabled={receiptLoadingId === c.id}
-                          >
-                            {receiptLoadingId === c.id ? 'Loading...' : 'Receipt'}
-                          </Button>
-                        </PermissionGuard>
-                      </div>
-                    </td>
+                    {showActions && (
+                      <td className="px-4 py-3 text-right">
+                        <div className="flex flex-wrap justify-end gap-1">
+                          <WriteGuard permission="contribution:update">
+                            <Button variant="outline" size="sm" onClick={() => openEdit(c)} disabled={reversingId === c.id}>Edit</Button>
+                          </WriteGuard>
+                          <WriteGuard permission="contribution:delete">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => deleteContribution(c)}
+                              disabled={reversingId === c.id}
+                            >
+                              {reversingId === c.id ? 'Reversing...' : 'Reverse'}
+                            </Button>
+                          </WriteGuard>
+                          <WriteGuard permission="contribution:receipt" fallback={null}>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => viewReceipt(c.id)}
+                              disabled={receiptLoadingId === c.id}
+                            >
+                              {receiptLoadingId === c.id ? 'Loading...' : 'Receipt'}
+                            </Button>
+                          </WriteGuard>
+                        </div>
+                      </td>
+                    )}
                   </tr>
                 ))
               )}

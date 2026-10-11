@@ -11,7 +11,8 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { apiFetch } from '@/lib/api';
-import { PermissionGuard } from '@/components/PermissionGuard';
+import { WriteGuard, canWriteAny } from '@/components/PermissionGuard';
+import { useAuthStore } from '@/store/useAuthStore';
 
 interface Member {
   id: string;
@@ -33,6 +34,7 @@ interface PaginatedResponse<T> {
 }
 
 export default function MembersPage() {
+  const { user } = useAuthStore();
   const [members, setMembers] = useState<Member[]>([]);
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(true);
@@ -44,6 +46,10 @@ export default function MembersPage() {
   // Guards a double-clicked save, archive or portal toggle.
   const [saving, setSaving] = useState(false);
   const [busyMemberId, setBusyMemberId] = useState<string | null>(null);
+
+  // An auditor sees a plain directory: the Actions column is dropped entirely
+  // rather than left empty.
+  const showActions = canWriteAny(user?.role, ['member:update', 'member:delete']);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -158,30 +164,33 @@ export default function MembersPage() {
               aria-label="Search members"
               className="w-full sm:w-64"
             />
-            <PermissionGuard permission="member:create">
+            <WriteGuard permission="member:create">
               <Button onClick={() => { setEditingMember(null); setForm({ fullName: '', email: '', phone: '', address: '', memberNumber: '' }); setOpen(true); }}>Add Member</Button>
-            </PermissionGuard>
-            <Dialog open={open} onOpenChange={(value) => { setOpen(value); if (!value) setEditingMember(null); }}>
-              <DialogContent>
-                <DialogHeader>
-                  <DialogTitle>{editingMember ? 'Edit Member' : 'Add New Member'}</DialogTitle>
-                </DialogHeader>
-                <form onSubmit={handleSubmit} className="space-y-3">
-                  <Input placeholder="Full Name *" value={form.fullName} onChange={(e) => setForm({ ...form, fullName: e.target.value })} required />
-                  <Input placeholder="Email" type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
-                  <Input placeholder="Phone" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} />
-                  <Input placeholder="Address" value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} />
-                  <Input placeholder="Member Number" value={form.memberNumber} onChange={(e) => setForm({ ...form, memberNumber: e.target.value })} />
-                  {error && <p className="text-sm text-red-700">{error}</p>}
-                  <div className="flex justify-end gap-2">
-                    <Button type="button" variant="outline" onClick={() => setOpen(false)} disabled={saving}>Cancel</Button>
-                    <Button type="submit" disabled={saving}>
-                      {saving ? 'Saving...' : editingMember ? 'Save Changes' : 'Save'}
-                    </Button>
-                  </div>
-                </form>
-              </DialogContent>
-            </Dialog>
+            </WriteGuard>
+            {/* The form itself is a write surface: an auditor never mounts it. */}
+            <WriteGuard permissions={['member:create', 'member:update']}>
+              <Dialog open={open} onOpenChange={(value) => { setOpen(value); if (!value) setEditingMember(null); }}>
+                <DialogContent>
+                  <DialogHeader>
+                    <DialogTitle>{editingMember ? 'Edit Member' : 'Add New Member'}</DialogTitle>
+                  </DialogHeader>
+                  <form onSubmit={handleSubmit} className="space-y-3">
+                    <Input placeholder="Full Name *" value={form.fullName} onChange={(e) => setForm({ ...form, fullName: e.target.value })} required />
+                    <Input placeholder="Email" type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
+                    <Input placeholder="Phone" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} />
+                    <Input placeholder="Address" value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} />
+                    <Input placeholder="Member Number" value={form.memberNumber} onChange={(e) => setForm({ ...form, memberNumber: e.target.value })} />
+                    {error && <p className="text-sm text-red-700">{error}</p>}
+                    <div className="flex justify-end gap-2">
+                      <Button type="button" variant="outline" onClick={() => setOpen(false)} disabled={saving}>Cancel</Button>
+                      <Button type="submit" disabled={saving}>
+                        {saving ? 'Saving...' : editingMember ? 'Save Changes' : 'Save'}
+                      </Button>
+                    </div>
+                  </form>
+                </DialogContent>
+              </Dialog>
+            </WriteGuard>
           </div>
         }
       />
@@ -208,13 +217,13 @@ export default function MembersPage() {
                 <th className="px-4 py-3 text-left text-xs font-semibold text-navy-700 uppercase tracking-wider">Email</th>
                 <th className="px-4 py-3 text-left text-xs font-semibold text-navy-700 uppercase tracking-wider">Portal</th>
                 <th className="px-4 py-3 text-left text-xs font-semibold text-navy-700 uppercase tracking-wider">Joined</th>
-                <th className="px-4 py-3 text-right text-xs font-semibold text-navy-700 uppercase tracking-wider">Actions</th>
+                {showActions && <th className="px-4 py-3 text-right text-xs font-semibold text-navy-700 uppercase tracking-wider">Actions</th>}
               </tr>
             </thead>
             <tbody className="divide-y divide-navy-200">
               {members.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="px-4 py-8 text-center text-navy-500">No members found</td>
+                  <td colSpan={showActions ? 6 : 5} className="px-4 py-8 text-center text-navy-500">No members found</td>
                 </tr>
               ) : (
                 members.map((m) => (
@@ -230,17 +239,19 @@ export default function MembersPage() {
                       )}
                     </td>
                     <td className="px-4 py-3 text-sm text-navy-600">{new Date(m.joinedAt).toLocaleDateString()}</td>
-                    <td className="px-4 py-3 text-right">
-                      <div className="flex flex-wrap justify-end gap-2">
-                        <PermissionGuard permission="member:update"><Button size="sm" variant="outline" onClick={() => editMember(m)} disabled={busyMemberId === m.id}>Edit</Button></PermissionGuard>
-                        <PermissionGuard permission="member:delete"><Button size="sm" variant="outline" onClick={() => archiveMember(m)} disabled={!m.isActive || busyMemberId === m.id}>{m.isActive ? 'Archive' : 'Archived'}</Button></PermissionGuard>
-                        <PermissionGuard permission="member:update">
-                          <Button size="sm" variant="ghost" onClick={() => togglePortalAccess(m)} disabled={!m.email || busyMemberId === m.id}>
-                            {busyMemberId === m.id ? 'Saving...' : m.portalAccess ? 'Disable Portal' : 'Enable Portal'}
-                          </Button>
-                        </PermissionGuard>
-                      </div>
-                    </td>
+                    {showActions && (
+                      <td className="px-4 py-3 text-right">
+                        <div className="flex flex-wrap justify-end gap-2">
+                          <WriteGuard permission="member:update"><Button size="sm" variant="outline" onClick={() => editMember(m)} disabled={busyMemberId === m.id}>Edit</Button></WriteGuard>
+                          <WriteGuard permission="member:delete"><Button size="sm" variant="outline" onClick={() => archiveMember(m)} disabled={!m.isActive || busyMemberId === m.id}>{m.isActive ? 'Archive' : 'Archived'}</Button></WriteGuard>
+                          <WriteGuard permission="member:update">
+                            <Button size="sm" variant="ghost" onClick={() => togglePortalAccess(m)} disabled={!m.email || busyMemberId === m.id}>
+                              {busyMemberId === m.id ? 'Saving...' : m.portalAccess ? 'Disable Portal' : 'Enable Portal'}
+                            </Button>
+                          </WriteGuard>
+                        </div>
+                      </td>
+                    )}
                   </tr>
                 ))
               )}

@@ -2,7 +2,7 @@
 
 import { useAuthStore } from '@/store/useAuthStore';
 import { ReactNode } from 'react';
-import { hasPermission, isRole, Role } from '@/lib/permissions';
+import { hasPermission, isRole, isReadOnlyRole, isAuditor, canWrite, canWriteAny, Role } from '@/lib/permissions';
 import { useRouter } from 'next/navigation';
 import { useEffect } from 'react';
 
@@ -92,6 +92,54 @@ export function PermissionGuard({
   return <>{children}</>;
 }
 
+interface WriteGuardProps {
+  /** Whitelist of roles permitted to perform the write. */
+  allowedRoles?: RequiredRoles;
+  permission?: RequiredPermissions;
+  permissions?: RequiredPermissions[];
+  children: ReactNode;
+  fallback?: ReactNode;
+}
+
+/**
+ * Guard for state-changing controls: Add, Edit, Delete, Toggle, Lock/Unlock and
+ * form dialogs.
+ *
+ * Mirrors `PermissionGuard` but refuses read-only roles outright, so an auditor
+ * can never reach a write affordance even if the permission matrix were later
+ * extended with a write entry by mistake. The API rejects the same calls with a
+ * 403; this guard keeps the UI from offering them in the first place.
+ */
+export function WriteGuard({
+  allowedRoles,
+  permission,
+  permissions,
+  children,
+  fallback = null,
+}: WriteGuardProps): React.ReactNode {
+  const { user } = useAuthStore();
+
+  if (!user || isReadOnlyRole(user.role)) {
+    return fallback ? <>{fallback}</> : null;
+  }
+
+  if (!checkRole(user.role, allowedRoles)) {
+    return fallback ? <>{fallback}</> : null;
+  }
+
+  const allowed = permission
+    ? checkPermission(user.role, permission)
+    : permissions
+      ? checkPermissions(user.role, permissions)
+      : true;
+
+  if (!allowed) {
+    return fallback ? <>{fallback}</> : null;
+  }
+
+  return <>{children}</>;
+}
+
 export function RouteGuard({
   requiredPermission,
   requiredRoles,
@@ -150,4 +198,12 @@ function UnauthorizedFallback() {
   );
 }
 
-export { isRole, hasPermission, hasAnyPermissionFromStore as hasAnyPermission };
+export {
+  isRole,
+  isAuditor,
+  isReadOnlyRole,
+  hasPermission,
+  canWrite,
+  canWriteAny,
+  hasAnyPermissionFromStore as hasAnyPermission,
+};

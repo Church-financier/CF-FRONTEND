@@ -11,7 +11,8 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { apiFetch } from '@/lib/api';
-import { PermissionGuard } from '@/components/PermissionGuard';
+import { useAuthStore } from '@/store/useAuthStore';
+import { WriteGuard, canWriteAny } from '@/components/PermissionGuard';
 
 interface ChartOfAccount {
   id: string;
@@ -42,7 +43,11 @@ const EMPTY_FORM = {
 };
 
 export default function ChartOfAccountsPage() {
+  const { user } = useAuthStore();
   const [accounts, setAccounts] = useState<ChartOfAccount[]>([]);
+
+  // Auditor sees a read-only chart; no create/edit/deactivate.
+  const showActions = canWriteAny(user?.role, ['chart-of-accounts:update', 'chart-of-accounts:delete']);
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<ChartOfAccount | null>(null);
   const [loading, setLoading] = useState(true);
@@ -152,9 +157,9 @@ export default function ChartOfAccountsPage() {
       <Header
         title="Chart of Accounts"
         right={
-          <PermissionGuard permission="chart-of-accounts:create">
+          <WriteGuard permission="chart-of-accounts:create" fallback={null}>
             <Button onClick={startCreate}>Add Account</Button>
-          </PermissionGuard>
+          </WriteGuard>
         }
       />
 
@@ -190,15 +195,17 @@ export default function ChartOfAccountsPage() {
                 <th className="px-4 py-3 text-left text-xs font-semibold text-navy-700 uppercase tracking-wider">
                   Status
                 </th>
-                <th className="px-4 py-3 text-right text-xs font-semibold text-navy-700 uppercase tracking-wider">
-                  Actions
-                </th>
+                {showActions && (
+                  <th className="px-4 py-3 text-right text-xs font-semibold text-navy-700 uppercase tracking-wider">
+                    Actions
+                  </th>
+                )}
               </tr>
             </thead>
             <tbody className="divide-y divide-navy-200">
               {accounts.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="px-4 py-8 text-center text-navy-500">
+                  <td colSpan={showActions ? 6 : 5} className="px-4 py-8 text-center text-navy-500">
                     No accounts found
                   </td>
                 </tr>
@@ -226,32 +233,34 @@ export default function ChartOfAccountsPage() {
                         {account.isActive ? 'Active' : 'Inactive'}
                       </span>
                     </td>
-                    <td className="px-4 py-3 text-right">
-                      <div className="flex flex-wrap justify-end gap-2">
-                        <PermissionGuard permission="chart-of-accounts:update" fallback={null}>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => startEdit(account)}
-                            disabled={togglingId === account.id}
-                          >
-                            Edit
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => toggleActive(account)}
-                            disabled={togglingId === account.id}
-                          >
-                            {togglingId === account.id
-                              ? 'Saving...'
-                              : account.isActive
-                                ? 'Deactivate'
-                                : 'Activate'}
-                          </Button>
-                        </PermissionGuard>
-                      </div>
-                    </td>
+                    {showActions && (
+                      <td className="px-4 py-3 text-right">
+                        <div className="flex flex-wrap justify-end gap-2">
+                          <WriteGuard permission="chart-of-accounts:update" fallback={null}>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => startEdit(account)}
+                              disabled={togglingId === account.id}
+                            >
+                              Edit
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => toggleActive(account)}
+                              disabled={togglingId === account.id}
+                            >
+                              {togglingId === account.id
+                                ? 'Saving...'
+                                : account.isActive
+                                  ? 'Deactivate'
+                                  : 'Activate'}
+                            </Button>
+</WriteGuard>
+                        </div>
+                      </td>
+                    )}
                   </tr>
                 ))
               )}
@@ -260,17 +269,18 @@ export default function ChartOfAccountsPage() {
         </div>
       )}
 
-      <Dialog open={open} onOpenChange={(next) => { if (!next && !submitting) closeDialogs(); }}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>{editing ? 'Edit Account' : 'Create New Account'}</DialogTitle>
-          </DialogHeader>
-          {error && (
-            <div className="p-3 text-sm text-red-700 bg-red-50 border border-red-200 rounded-md">
-              {error}
-            </div>
-          )}
-          <form onSubmit={handleSubmit} className="space-y-4">
+      <WriteGuard permissions={['chart-of-accounts:create', 'chart-of-accounts:update']}>
+        <Dialog open={open} onOpenChange={(next) => { if (!next && !submitting) closeDialogs(); }}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>{editing ? 'Edit Account' : 'Create New Account'}</DialogTitle>
+            </DialogHeader>
+            {error && (
+              <div className="p-3 text-sm text-red-700 bg-red-50 border border-red-200 rounded-md">
+                {error}
+              </div>
+            )}
+            <form onSubmit={handleSubmit} className="space-y-4">
             <div>
               <label className="block text-sm font-medium text-navy-700 mb-1">
                 Account Code
@@ -357,6 +367,7 @@ export default function ChartOfAccountsPage() {
           </form>
         </DialogContent>
       </Dialog>
+      </WriteGuard>
     </div>
   );
 }

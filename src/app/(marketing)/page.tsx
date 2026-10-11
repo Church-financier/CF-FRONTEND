@@ -8,23 +8,23 @@ export default function MarketingPage() {
     <div className="min-h-screen bg-white">
       <nav className="border-b border-navy-200 bg-white/80 backdrop-blur">
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-          <div className="flex h-16 items-center justify-between gap-3">
+          <div className="flex min-h-16 flex-col justify-center gap-3 py-3 sm:h-16 sm:flex-row sm:items-center sm:justify-between sm:gap-3 sm:py-0">
             <div className="flex min-w-0 items-center gap-2 sm:gap-3">
               <Wallet className="h-5 w-5 shrink-0 text-navy-900 sm:h-6 sm:w-6" />
               <span className="truncate text-base font-bold text-navy-900 sm:text-lg">
                 CHURCH FINANCIER
               </span>
             </div>
-            <div className="flex shrink-0 items-center gap-3 sm:gap-4">
+            <div className="flex w-full items-center justify-between gap-2 sm:w-auto sm:shrink-0 sm:justify-end sm:gap-4">
               <Link
                 href="/portal/login"
-                className="hidden text-sm font-medium text-navy-600 hover:text-navy-900 sm:inline"
+                className="inline-flex items-center rounded-md py-2 text-sm font-medium text-navy-600 hover:text-navy-900"
               >
                 Member Portal
               </Link>
               <Link
                 href="/login"
-                className="text-sm font-medium text-navy-600 hover:text-navy-900"
+                className="inline-flex items-center rounded-md py-2 text-sm font-medium text-navy-600 hover:text-navy-900"
               >
                 Sign In
               </Link>

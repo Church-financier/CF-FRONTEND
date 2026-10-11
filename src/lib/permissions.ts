@@ -100,6 +100,38 @@ export function isRole(role: Role | undefined | null, ...roles: Role[]): boolean
   return roles.includes(role);
 }
 
+/**
+ * Roles that are strictly view-only.
+ *
+ * The auditor verifies records rather than maintaining them: it may read every
+ * auditable resource and generate/export financial statements, but it must
+ * never create, update, delete, lock or toggle anything. Kept in sync with
+ * `READ_ONLY_ROLES` in `backend/src/middleware/rbacMiddleware.ts`.
+ */
+export const READ_ONLY_ROLES: Role[] = ['AUDITOR'];
+
+export function isReadOnlyRole(role: Role | undefined | null): boolean {
+  return isRole(role, ...READ_ONLY_ROLES);
+}
+
+export function isAuditor(role: Role | undefined | null): boolean {
+  return role === 'AUDITOR';
+}
+
+/**
+ * True when the role may perform a write action. Read-only roles never can, even
+ * if the permission matrix were ever extended with a write entry by mistake.
+ */
+export function canWrite(role: Role | undefined | null, permission: string): boolean {
+  if (isReadOnlyRole(role)) return false;
+  return hasPermission(role, permission);
+}
+
+/** True when the role may perform at least one of the supplied write actions. */
+export function canWriteAny(role: Role | undefined | null, permissions: string[]): boolean {
+  return permissions.some((permission) => canWrite(role, permission));
+}
+
 export const DISBURSEMENT_APPROVER_ROLES: Role[] = ['SUPER_ADMIN', 'TREASURER'];
 
 export function canApproveDisbursement(role: Role | undefined | null): boolean {

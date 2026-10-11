@@ -13,7 +13,8 @@ import {
 } from '@/components/ui/dialog';
 import { apiFetch } from '@/lib/api';
 import { formatVendorId, copyToClipboard } from '@/lib/utils';
-import { PermissionGuard } from '@/components/PermissionGuard';
+import { WriteGuard, canWriteAny } from '@/components/PermissionGuard';
+import { useAuthStore } from '@/store/useAuthStore';
 
 interface Vendor {
   id: string;
@@ -138,6 +139,7 @@ function VendorFormFields({ formData, setFormData }: {
 }
 
 export default function VendorsPage() {
+  const { user } = useAuthStore();
   const [vendors, setVendors] = useState<Vendor[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -146,6 +148,10 @@ export default function VendorsPage() {
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Vendor | null>(null);
   const [deleting, setDeleting] = useState<Vendor | null>(null);
+
+  // Bank details are sensitive and editable, so an auditor gets a plain vendor
+  // list with no Actions column at all.
+  const showActions = canWriteAny(user?.role, ['vendor:update', 'vendor:delete']);
   const [formData, setFormData] = useState<VendorFormState>(EMPTY_FORM);
 
   const loadVendors = useCallback(async () => {
@@ -238,9 +244,9 @@ export default function VendorsPage() {
       <Header
         title="Vendor Management"
         right={
-          <PermissionGuard permission="vendor:create">
+          <WriteGuard permission="vendor:create">
             <Button onClick={openCreate}>Add Vendor</Button>
-          </PermissionGuard>
+          </WriteGuard>
         }
       />
 
@@ -286,15 +292,17 @@ export default function VendorsPage() {
                   <th className="px-4 py-3 text-left text-xs font-semibold text-navy-700 uppercase tracking-wider">
                     Bank Details
                   </th>
-                  <th className="px-4 py-3 text-right text-xs font-semibold text-navy-700 uppercase tracking-wider">
-                    Actions
-                  </th>
+                  {showActions && (
+                    <th className="px-4 py-3 text-right text-xs font-semibold text-navy-700 uppercase tracking-wider">
+                      Actions
+                    </th>
+                  )}
                 </tr>
               </thead>
               <tbody className="divide-y divide-navy-200">
                 {vendors.length === 0 ? (
                   <tr>
-                    <td colSpan={6} className="px-4 py-8 text-center text-navy-500">
+                    <td colSpan={showActions ? 6 : 5} className="px-4 py-8 text-center text-navy-500">
                       No vendors found
                     </td>
                   </tr>
@@ -334,14 +342,15 @@ export default function VendorsPage() {
                           '-'
                         )}
                       </td>
+                      {showActions && (
                       <td className="px-4 py-3">
                         <div className="flex flex-wrap justify-end gap-2">
-                          <PermissionGuard permission="vendor:update">
+                          <WriteGuard permission="vendor:update">
                             <Button size="sm" variant="outline" onClick={() => openEdit(vendor)}>
                               Edit
                             </Button>
-                          </PermissionGuard>
-                          <PermissionGuard permission="vendor:delete">
+                          </WriteGuard>
+                          <WriteGuard permission="vendor:delete">
                             <Button
                               size="sm"
                               variant="outline"
@@ -350,9 +359,10 @@ export default function VendorsPage() {
                             >
                               Delete
                             </Button>
-                          </PermissionGuard>
+                          </WriteGuard>
                         </div>
                       </td>
+                    )}
                     </tr>
                   ))
                 )}
@@ -362,53 +372,59 @@ export default function VendorsPage() {
         </div>
       )}
 
-      <Dialog open={open} onOpenChange={(value) => { setOpen(value); if (!value) setEditing(null); }}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>{editing ? 'Edit Vendor' : 'Create New Vendor'}</DialogTitle>
-            <DialogDescription>
-              {editing
-                ? 'Update vendor details, banking information, and tax ID.'
-                : 'Register a vendor with contact, banking, and tax details.'}
-            </DialogDescription>
-          </DialogHeader>
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <VendorFormFields formData={formData} setFormData={setFormData} />
-            {error && (
-              <div className="p-3 text-sm text-red-700 bg-red-50 border border-red-200 rounded-md">
-                {error}
+      {/* Bank details and tax ID are edited in this form, so it is a write surface
+          and must never mount for a read-only role. */}
+      <WriteGuard permissions={['vendor:create', 'vendor:update']}>
+        <Dialog open={open} onOpenChange={(value) => { setOpen(value); if (!value) setEditing(null); }}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>{editing ? 'Edit Vendor' : 'Create New Vendor'}</DialogTitle>
+              <DialogDescription>
+                {editing
+                  ? 'Update vendor details, banking information, and tax ID.'
+                  : 'Register a vendor with contact, banking, and tax details.'}
+              </DialogDescription>
+            </DialogHeader>
+            <form onSubmit={handleSubmit} className="space-y-4">
+              <VendorFormFields formData={formData} setFormData={setFormData} />
+              {error && (
+                <div className="p-3 text-sm text-red-700 bg-red-50 border border-red-200 rounded-md">
+                  {error}
+                </div>
+              )}
+              <div className="flex justify-end gap-2">
+                <Button type="button" variant="outline" onClick={() => setOpen(false)}>
+                  Cancel
+                </Button>
+                <Button type="submit" disabled={submitting}>
+                  {submitting ? 'Saving...' : editing ? 'Save Changes' : 'Create Vendor'}
+                </Button>
               </div>
-            )}
+            </form>
+          </DialogContent>
+        </Dialog>
+      </WriteGuard>
+
+      <WriteGuard permission="vendor:delete">
+        <Dialog open={!!deleting} onOpenChange={(value) => !value && setDeleting(null)}>
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle>Delete Vendor</DialogTitle>
+              <DialogDescription>
+                {`Delete ${deleting?.name ?? 'this vendor'}? Vendors referenced by disbursement requests cannot be deleted.`}
+              </DialogDescription>
+            </DialogHeader>
             <div className="flex justify-end gap-2">
-              <Button type="button" variant="outline" onClick={() => setOpen(false)}>
+              <Button variant="outline" onClick={() => setDeleting(null)}>
                 Cancel
               </Button>
-              <Button type="submit" disabled={submitting}>
-                {submitting ? 'Saving...' : editing ? 'Save Changes' : 'Create Vendor'}
+              <Button variant="destructive" onClick={handleDelete} disabled={submitting}>
+                {submitting ? 'Deleting...' : 'Delete Vendor'}
               </Button>
             </div>
-          </form>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog open={!!deleting} onOpenChange={(value) => !value && setDeleting(null)}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>Delete Vendor</DialogTitle>
-            <DialogDescription>
-              {`Delete ${deleting?.name ?? 'this vendor'}? Vendors referenced by disbursement requests cannot be deleted.`}
-            </DialogDescription>
-          </DialogHeader>
-          <div className="flex justify-end gap-2">
-            <Button variant="outline" onClick={() => setDeleting(null)}>
-              Cancel
-            </Button>
-            <Button variant="destructive" onClick={handleDelete} disabled={submitting}>
-              {submitting ? 'Deleting...' : 'Delete Vendor'}
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
+          </DialogContent>
+        </Dialog>
+      </WriteGuard>
     </div>
   );
 }

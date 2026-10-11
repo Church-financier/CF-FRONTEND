@@ -18,7 +18,8 @@ import { VoucherDocument, type VoucherPayload } from '@/components/documents/Vou
 import { useCurrency } from '@/hooks/useCurrency';
 import { apiFetch } from '@/lib/api';
 import { useIdempotentSubmit } from '@/hooks/useIdempotentSubmit';
-import { PermissionGuard } from '@/components/PermissionGuard';
+import { WriteGuard, isAuditor } from '@/components/PermissionGuard';
+import { useAuthStore } from '@/store/useAuthStore';
 
 interface PaginatedResponse<T> {
   data: T[];
@@ -47,8 +48,12 @@ const STATUS_FILTERS: Array<{ value: string; label: string }> = [
 ];
 
 export default function DisbursementsPage() {
+  const { user } = useAuthStore();
   const { format, code } = useCurrency();
   const [disbursements, setDisbursements] = useState<Disbursement[]>([]);
+
+  // Auditor: read-only list + vouchers. No create, approve, reject, pay, cancel.
+  const showActions = !isAuditor(user?.role);
   const [total, setTotal] = useState(0);
   const [status, setStatus] = useState('');
   const [loading, setLoading] = useState(true);
@@ -164,9 +169,9 @@ export default function DisbursementsPage() {
       <Header
         title="Disbursements"
         right={
-          <PermissionGuard permission="disbursement:create">
+          <WriteGuard permission="disbursement:create" fallback={null}>
             <DisbursementForm onSubmit={handleCreate} disabled={creating} />
-          </PermissionGuard>
+          </WriteGuard>
         }
       />
 
@@ -257,14 +262,16 @@ export default function DisbursementsPage() {
                             {voucherLoadingId === d.id ? 'Loading...' : 'Voucher'}
                           </Button>
                         )}
-                        <DisbursementApprovalDrawer
-                          disbursement={d}
-                          onAction={handleAction}
-                          onReject={handleReject}
-                          onMarkPaid={handleMarkPaid}
-                          onCancel={handleCancel}
-                          busy={actingOn === d.id}
-                        />
+                        {showActions && (
+                          <DisbursementApprovalDrawer
+                            disbursement={d}
+                            onAction={handleAction}
+                            onReject={handleReject}
+                            onMarkPaid={handleMarkPaid}
+                            onCancel={handleCancel}
+                            busy={actingOn === d.id}
+                          />
+                        )}
                       </div>
                     </TableCell>
                   </TableRow>

@@ -5,7 +5,7 @@ import { Header } from '@/components/layout/Header';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { apiFetch } from '@/lib/api';
-import { PermissionGuard } from '@/components/PermissionGuard';
+import { PermissionGuard, WriteGuard, isRole } from '@/components/PermissionGuard';
 import { useAuthStore } from '@/store/useAuthStore';
 
 interface Period {
@@ -39,6 +39,10 @@ function PeriodsContent() {
   const [loading, setLoading] = useState(true);
   const [fiscalYear, setFiscalYear] = useState(new Date().getFullYear());
   const [month, setMonth] = useState(new Date().getMonth() + 1);
+
+  // Re-opening a locked period rewrites the close state, so it is a write.
+  // Mirrors requireRole("SUPER_ADMIN") on POST /periods/unlock.
+  const canUnlock = isRole(user?.role, 'SUPER_ADMIN');
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -79,7 +83,9 @@ function PeriodsContent() {
         Lock a fiscal period to prevent new ledger entries from being posted. Useful for month-end / year-end close.
       </p>
 
-      {(user?.role === 'SUPER_ADMIN' || user?.role === 'TREASURER') && (
+      {/* Locking closes a period to further posting, so it is a write action.
+          An auditor may still see every period and its status below. */}
+      <WriteGuard allowedRoles={['SUPER_ADMIN', 'TREASURER']}>
         <div className="flex flex-col items-stretch gap-3 rounded-lg border border-navy-200 bg-white p-4 sm:flex-row sm:flex-wrap sm:items-end">
           <div className="w-full sm:w-auto">
             <label className="mb-1 block text-sm font-medium text-navy-700" htmlFor="period-fiscal-year">Fiscal Year</label>
@@ -100,7 +106,7 @@ function PeriodsContent() {
           </div>
           <Button onClick={lock} className="w-full sm:w-auto">Lock Period</Button>
         </div>
-      )}
+      </WriteGuard>
 
       {loading ? (
         <div className="bg-white rounded-lg border border-navy-200 p-8 text-center">
@@ -115,13 +121,15 @@ function PeriodsContent() {
                 <th className="px-4 py-3 text-left text-xs font-semibold text-navy-700 uppercase tracking-wider">Period</th>
                 <th className="px-4 py-3 text-left text-xs font-semibold text-navy-700 uppercase tracking-wider">Status</th>
                 <th className="px-4 py-3 text-left text-xs font-semibold text-navy-700 uppercase tracking-wider">Locked At</th>
-                <th className="px-4 py-3 text-right text-xs font-semibold text-navy-700 uppercase tracking-wider">Actions</th>
+                {canUnlock && (
+                  <th className="px-4 py-3 text-right text-xs font-semibold text-navy-700 uppercase tracking-wider">Actions</th>
+                )}
               </tr>
             </thead>
             <tbody className="divide-y divide-navy-200">
               {periods.length === 0 ? (
                 <tr>
-                  <td colSpan={4} className="px-4 py-8 text-center text-navy-500">No locked periods yet</td>
+                  <td colSpan={canUnlock ? 4 : 3} className="px-4 py-8 text-center text-navy-500">No locked periods yet</td>
                 </tr>
               ) : (
                 periods.map((p) => (
@@ -133,13 +141,15 @@ function PeriodsContent() {
                       </span>
                     </td>
                     <td className="px-4 py-3 text-sm text-navy-600">{p.lockedAt ? new Date(p.lockedAt).toLocaleString() : '-'}</td>
-                    <td className="px-4 py-3 text-right">
-                      {p.isLocked && user?.role === 'SUPER_ADMIN' && (
-                        <Button variant="outline" size="sm" onClick={() => unlock(p.fiscalYear, p.month)}>
-                          Unlock
-                        </Button>
-                      )}
-                    </td>
+                    {canUnlock && (
+                      <td className="px-4 py-3 text-right">
+                        {p.isLocked && (
+                          <Button variant="outline" size="sm" onClick={() => unlock(p.fiscalYear, p.month)}>
+                            Unlock
+                          </Button>
+                        )}
+                      </td>
+                    )}
                   </tr>
                 ))
               )}

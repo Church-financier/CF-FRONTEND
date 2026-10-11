@@ -1,8 +1,8 @@
 {
-  "/(marketing)/page": "app/(marketing)/page.js",
-  "/(auth)/login/page": "app/(auth)/login/page.js",
-  "/(dashboard)/funds/page": "app/(dashboard)/funds/page.js",
-  "/(dashboard)/dashboard/page": "app/(dashboard)/dashboard/page.js",
-  "/(dashboard)/pledges/page": "app/(dashboard)/pledges/page.js",
-  "/(dashboard)/system/settings/page": "app/(dashboard)/system/settings/page.js"
+  "/_not-found/page": "app/_not-found/page.js",
+  "/(dashboard)/users/page": "app/(dashboard)/users/page.js",
+  "/(dashboard)/ledger/page": "app/(dashboard)/ledger/page.js",
+  "/(dashboard)/disbursements/page": "app/(dashboard)/disbursements/page.js",
+  "/(dashboard)/members/page": "app/(dashboard)/members/page.js",
+  "/(dashboard)/departments/page": "app/(dashboard)/departments/page.js"
 }

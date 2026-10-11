@@ -11,8 +11,9 @@ import {
 } from '@/components/ui/dialog';
 import { apiFetch } from '@/lib/api';
 import { useCurrency } from '@/hooks/useCurrency';
-import { PermissionGuard } from '@/components/PermissionGuard';
+import { PermissionGuard, WriteGuard, canWriteAny } from '@/components/PermissionGuard';
 import { useEffect, useState, useCallback } from 'react';
+import { useAuthStore } from '@/store/useAuthStore';
 
 interface Fund {
   id: string;
@@ -33,8 +34,12 @@ interface PaginatedResponse<T> {
 }
 
 export default function FundsPage() {
+  const { user } = useAuthStore();
   const { format } = useCurrency();
   const [funds, setFunds] = useState<Fund[]>([]);
+
+  // Auditor sees a read-only list; no create/edit/delete affordances.
+  const showActions = canWriteAny(user?.role, ['fund:update', 'fund:delete']);
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -83,70 +88,164 @@ export default function FundsPage() {
     }
   };
 
+  const handleDelete = async (id: string) => {
+    if (!confirm('Delete this fund? This cannot be undone.')) return;
+    try {
+      setError(null);
+      await apiFetch(`/funds/${id}`, { method: 'DELETE' });
+      await loadFunds();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to delete fund');
+    }
+  };
+
+  const [editing, setEditing] = useState<Fund | null>(null);
+
+  const handleEditSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editing || submitting) return;
+    try {
+      setSubmitting(true);
+      setError(null);
+      await apiFetch(`/funds/${editing.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify(formData),
+      });
+      setEditing(null);
+      setOpen(false);
+      await loadFunds();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to update fund');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
       <Header
         title="Fund Management"
         right={
-          <PermissionGuard permission="fund:create" fallback={null}>
-            <Dialog open={open} onOpenChange={setOpen}>
-            <Button onClick={() => setOpen(true)}>Add Fund</Button>
-            <DialogContent>
-              <DialogHeader>
-                <DialogTitle>Create New Fund</DialogTitle>
-              </DialogHeader>
-              {error && (
-                <div className="p-3 text-sm text-red-700 bg-red-50 border border-red-200 rounded-md">
-                  {error}
-                </div>
-              )}
-              <form onSubmit={handleSubmit} className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-navy-700 mb-1">
-                    Fund Name
-                  </label>
-                  <Input
-                    value={formData.name}
-                    onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                    required
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-navy-700 mb-1">
-                    Description
-                  </label>
-                  <Input
-                    value={formData.description}
-                    onChange={(e) =>
-                      setFormData({ ...formData, description: e.target.value })
-                    }
-                  />
-                </div>
-                <div className="flex items-center gap-2">
-                  <input
-                    type="checkbox"
-                    id="restricted"
-                    checked={formData.isRestricted}
-                    onChange={(e) =>
-                      setFormData({ ...formData, isRestricted: e.target.checked })
-                    }
-                  />
-                  <label htmlFor="restricted" className="text-sm text-navy-700">
-                    Restricted Fund
-                  </label>
-                </div>
-                <div className="flex justify-end gap-2">
-                  <Button type="button" variant="outline" onClick={() => setOpen(false)}>
-                    Cancel
-                  </Button>
-                  <Button type="submit" disabled={submitting}>
-                    {submitting ? 'Creating...' : 'Create Fund'}
-                  </Button>
-                </div>
-              </form>
-            </DialogContent>
-          </Dialog>
-          </PermissionGuard>
+          <>
+            <PermissionGuard permission="fund:create" fallback={null}>
+              <Dialog open={open} onOpenChange={setOpen}>
+              <Button onClick={() => setOpen(true)}>Add Fund</Button>
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>Create New Fund</DialogTitle>
+                </DialogHeader>
+                {error && (
+                  <div className="p-3 text-sm text-red-700 bg-red-50 border border-red-200 rounded-md">
+                    {error}
+                  </div>
+                )}
+                <form onSubmit={handleSubmit} className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-navy-700 mb-1">
+                      Fund Name
+                    </label>
+                    <Input
+                      value={formData.name}
+                      onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-navy-700 mb-1">
+                      Description
+                    </label>
+                    <Input
+                      value={formData.description}
+                      onChange={(e) =>
+                        setFormData({ ...formData, description: e.target.value })
+                      }
+                    />
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      id="restricted"
+                      checked={formData.isRestricted}
+                      onChange={(e) =>
+                        setFormData({ ...formData, isRestricted: e.target.checked })
+                      }
+                    />
+                    <label htmlFor="restricted" className="text-sm text-navy-700">
+                      Restricted Fund
+                    </label>
+                  </div>
+                  <div className="flex justify-end gap-2">
+                    <Button type="button" variant="outline" onClick={() => setOpen(false)}>
+                      Cancel
+                    </Button>
+                    <Button type="submit" disabled={submitting}>
+                      {submitting ? 'Creating...' : 'Create Fund'}
+                    </Button>
+                  </div>
+                </form>
+              </DialogContent>
+            </Dialog>
+            </PermissionGuard>
+
+            <WriteGuard permission="fund:update" fallback={null}>
+              <Dialog open={!!editing} onOpenChange={(v) => { if (!v) setEditing(null); }}>
+                <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>Edit Fund</DialogTitle>
+                </DialogHeader>
+                {error && (
+                  <div className="p-3 text-sm text-red-700 bg-red-50 border border-red-200 rounded-md">
+                    {error}
+                  </div>
+                )}
+                <form onSubmit={handleEditSubmit} className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-navy-700 mb-1">
+                      Fund Name
+                    </label>
+                    <Input
+                      value={formData.name}
+                      onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-navy-700 mb-1">
+                      Description
+                    </label>
+                    <Input
+                      value={formData.description}
+                      onChange={(e) =>
+                        setFormData({ ...formData, description: e.target.value })
+                      }
+                    />
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      id="restricted-edit"
+                      checked={formData.isRestricted}
+                      onChange={(e) =>
+                        setFormData({ ...formData, isRestricted: e.target.checked })
+                      }
+                    />
+                    <label htmlFor="restricted-edit" className="text-sm text-navy-700">
+                      Restricted Fund
+                    </label>
+                  </div>
+                  <div className="flex justify-end gap-2">
+                    <Button type="button" variant="outline" onClick={() => { setEditing(null); setOpen(false); }}>
+                      Cancel
+                    </Button>
+                    <Button type="submit" disabled={submitting}>
+                      {submitting ? 'Saving...' : 'Save Changes'}
+                    </Button>
+                  </div>
+                </form>
+              </DialogContent>
+            </Dialog>
+            </WriteGuard>
+          </>
         }
       />
 
@@ -189,12 +288,17 @@ export default function FundsPage() {
                 <th className="px-4 py-3 text-left text-xs font-semibold text-navy-700 uppercase tracking-wider">
                   Created
                 </th>
+                {showActions && (
+                  <th className="px-4 py-3 text-right text-xs font-semibold text-navy-700 uppercase tracking-wider">
+                    Actions
+                  </th>
+                )}
               </tr>
             </thead>
             <tbody className="divide-y divide-navy-200">
               {funds.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="px-4 py-8 text-center text-navy-500">
+                  <td colSpan={showActions ? 8 : 7} className="px-4 py-8 text-center text-navy-500">
                     No funds found
                   </td>
                 </tr>
@@ -226,6 +330,31 @@ export default function FundsPage() {
                     <td className="px-4 py-3 text-sm text-navy-600">
                       {new Date(fund.createdAt).toLocaleDateString()}
                     </td>
+                    {showActions && (
+                      <td className="px-4 py-3 text-right">
+                        <div className="flex flex-wrap justify-end gap-2">
+                          <WriteGuard permission="fund:update">
+                            <Button size="sm" variant="outline" onClick={() => {
+                              setEditing(fund);
+                              setFormData({ name: fund.name, description: fund.description || '', isRestricted: fund.isRestricted });
+                              setOpen(true);
+                            }}>
+                              Edit
+                            </Button>
+                          </WriteGuard>
+                          <WriteGuard permission="fund:delete">
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="text-red-700 border-red-300 hover:bg-red-50"
+                              onClick={() => handleDelete(fund.id)}
+                            >
+                              Delete
+                            </Button>
+                          </WriteGuard>
+                        </div>
+                      </td>
+                    )}
                   </tr>
                 ))
               )}

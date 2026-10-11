@@ -13,7 +13,8 @@ import {
 } from '@/components/ui/dialog';
 import { apiFetch } from '@/lib/api';
 import { useCurrency } from '@/hooks/useCurrency';
-import { PermissionGuard } from '@/components/PermissionGuard';
+import { WriteGuard, canWriteAny } from '@/components/PermissionGuard';
+import { useAuthStore } from '@/store/useAuthStore';
 
 interface Fund {
   id: string;
@@ -54,6 +55,7 @@ const CONTRIBUTION_TYPES = ['CASH', 'CHECK', 'ENVELOPE'] as const;
 const today = () => new Date().toISOString().split('T')[0];
 
 export default function PledgesPage() {
+  const { user } = useAuthStore();
   const { format, code, symbol, toMinorUnits, toInputValue, inputStep, inputMin } = useCurrency();
   const [pledges, setPledges] = useState<Pledge[]>([]);
   const [funds, setFunds] = useState<Fund[]>([]);
@@ -115,6 +117,14 @@ export default function PledgesPage() {
 
   const isOverdue = (pledge: Pledge) =>
     pledge.status === 'ACTIVE' && !!pledge.endDate && new Date(pledge.endDate) < new Date();
+
+  // Recording a payment, editing or cancelling a pledge are all writes, so the
+  // Actions column is dropped entirely for a read-only role.
+  const showActions = canWriteAny(user?.role, [
+    'contribution:create',
+    'pledge:update',
+    'pledge:delete',
+  ]);
 
   const visiblePledges = useMemo(() => {
     const term = search.trim().toLowerCase();
@@ -284,7 +294,7 @@ export default function PledgesPage() {
               <option value="COMPLETED">Fulfilled</option>
               <option value="CANCELLED">Cancelled</option>
             </select>
-            <PermissionGuard permission="pledge:create">
+            <WriteGuard permission="pledge:create">
               <Button
                 onClick={() => {
                   setEditingPledge(null);
@@ -294,7 +304,7 @@ export default function PledgesPage() {
               >
                 Add Pledge
               </Button>
-            </PermissionGuard>
+            </WriteGuard>
           </div>
         }
       />
@@ -348,15 +358,17 @@ export default function PledgesPage() {
                   <th className="px-4 py-3 text-left text-xs font-semibold text-navy-700 uppercase tracking-wider">
                     Status
                   </th>
-                  <th className="px-4 py-3 text-right text-xs font-semibold text-navy-700 uppercase tracking-wider">
-                    Actions
-                  </th>
+                  {showActions && (
+                    <th className="px-4 py-3 text-right text-xs font-semibold text-navy-700 uppercase tracking-wider">
+                      Actions
+                    </th>
+                  )}
                 </tr>
               </thead>
               <tbody className="divide-y divide-navy-200">
                 {visiblePledges.length === 0 ? (
                   <tr>
-                    <td colSpan={7} className="px-4 py-8 text-center text-navy-500">
+                    <td colSpan={showActions ? 7 : 6} className="px-4 py-8 text-center text-navy-500">
                       No pledges found
                     </td>
                   </tr>
@@ -401,31 +413,33 @@ export default function PledgesPage() {
                           {isOverdue(pledge) ? 'OVERDUE' : pledge.status}
                         </span>
                       </td>
-                      <td className="px-4 py-3 text-right">
-                        <div className="flex flex-wrap justify-end gap-2">
-                          <PermissionGuard permission="contribution:create" fallback={null}>
-                            {pledge.status !== 'CANCELLED' && !pledge.fulfilled && (
-                              <Button size="sm" onClick={() => openPayment(pledge)}>
-                                Record Payment
-                              </Button>
-                            )}
-                          </PermissionGuard>
-                          <PermissionGuard permission="pledge:update">
-                            {pledge.status !== 'CANCELLED' && pledge.status !== 'COMPLETED' && (
-                              <Button size="sm" variant="outline" onClick={() => editPledge(pledge)}>
-                                Edit
-                              </Button>
-                            )}
-                          </PermissionGuard>
-                          <PermissionGuard permission="pledge:delete">
-                            {pledge.status !== 'CANCELLED' && (
-                              <Button size="sm" variant="outline" onClick={() => cancelPledge(pledge)}>
-                                Cancel
-                              </Button>
-                            )}
-                          </PermissionGuard>
-                        </div>
-                      </td>
+                      {showActions && (
+                        <td className="px-4 py-3 text-right">
+                          <div className="flex flex-wrap justify-end gap-2">
+                            <WriteGuard permission="contribution:create" fallback={null}>
+                              {pledge.status !== 'CANCELLED' && !pledge.fulfilled && (
+                                <Button size="sm" onClick={() => openPayment(pledge)}>
+                                  Record Payment
+                                </Button>
+                              )}
+                            </WriteGuard>
+                            <WriteGuard permission="pledge:update">
+                              {pledge.status !== 'CANCELLED' && pledge.status !== 'COMPLETED' && (
+                                <Button size="sm" variant="outline" onClick={() => editPledge(pledge)}>
+                                  Edit
+                                </Button>
+                              )}
+                            </WriteGuard>
+                            <WriteGuard permission="pledge:delete">
+                              {pledge.status !== 'CANCELLED' && (
+                                <Button size="sm" variant="outline" onClick={() => cancelPledge(pledge)}>
+                                  Cancel
+                                </Button>
+                              )}
+                            </WriteGuard>
+                          </div>
+                        </td>
+                      )}
                     </tr>
                   ))
                 )}
@@ -435,200 +449,206 @@ export default function PledgesPage() {
         </div>
       )}
 
-      <Dialog open={open} onOpenChange={(value) => { setOpen(value); if (!value) setEditingPledge(null); }}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>{editingPledge ? 'Edit Pledge' : 'Create New Pledge'}</DialogTitle>
-            <DialogDescription>
-              {editingPledge
-                ? 'Update the commitment details for this pledge.'
-                : 'Record a new pledge commitment against a member and fund.'}
-            </DialogDescription>
-          </DialogHeader>
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium text-navy-700 mb-1">
-                Member
-              </label>
-              <select
-                value={formData.memberId}
-                onChange={(e) => selectMember(e.target.value)}
-                required
-                className="w-full h-9 rounded-md border border-navy-300 bg-white px-3 py-1 text-sm"
-              >
-                <option value="">Select a member</option>
-                {members.map((member) => (
-                  <option key={member.id} value={member.id}>
-                    {member.fullName}
-                    {member.memberNumber ? ` (${member.memberNumber})` : ''}
-                  </option>
-                ))}
-              </select>
-              {loadingFunds && <p className="mt-1 text-xs text-navy-500">Loading members...</p>}
-              {!loadingFunds && members.length === 0 && (
-                <p className="mt-1 text-xs text-red-600">No members available. Add a member first.</p>
-              )}
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-navy-700 mb-1">
-                Fund
-              </label>
-              <select
-                value={formData.fundId}
-                onChange={(e) => setFormData({ ...formData, fundId: e.target.value })}
-                required
-                className="w-full h-9 rounded-md border border-navy-300 bg-white px-3 py-1 text-sm"
-              >
-                <option value="">Select a fund</option>
-                {funds.map((fund) => (
-                  <option key={fund.id} value={fund.id}>
-                    {fund.name}
-                  </option>
-                ))}
-              </select>
-              {loadingFunds && <p className="mt-1 text-xs text-navy-500">Loading funds...</p>}
-              {!loadingFunds && funds.length === 0 && (
-                <p className="mt-1 text-xs text-red-600">No funds available. Create a fund first.</p>
-              )}
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-navy-700 mb-1">
-                Amount ({code})
-              </label>
-              <Input
-                type="number"
-                min={inputMin}
-                step={inputStep}
-                value={formData.amountInKobo}
-                onChange={(e) => setFormData({ ...formData, amountInKobo: e.target.value })}
-                required
-              />
-            </div>
-            <div className="flex flex-col sm:flex-row gap-2">
-              <div className="flex-1">
-                <label className="block text-sm font-medium text-navy-700 mb-1">
-                  Start Date
-                </label>
-                <Input
-                  type="date"
-                  value={formData.startDate}
-                  onChange={(e) => setFormData({ ...formData, startDate: e.target.value })}
-                />
-              </div>
-              <div className="flex-1">
-                <label className="block text-sm font-medium text-navy-700 mb-1">
-                  End Date
-                </label>
-                <Input
-                  type="date"
-                  value={formData.endDate}
-                  onChange={(e) => setFormData({ ...formData, endDate: e.target.value })}
-                />
-              </div>
-            </div>
-            <div className="flex items-center gap-2">
-              <input
-                type="checkbox"
-                id="recurring"
-                checked={formData.recurring}
-                onChange={(e) => setFormData({ ...formData, recurring: e.target.checked })}
-              />
-              <label htmlFor="recurring" className="text-sm text-navy-700">
-                Recurring pledge
-              </label>
-            </div>
-            {error && (
-              <div className="p-3 text-sm text-red-700 bg-red-50 border border-red-200 rounded-md">
-                {error}
-              </div>
-            )}
-            <div className="flex justify-end gap-2">
-              <Button type="button" variant="outline" onClick={() => setOpen(false)}>
-                Cancel
-              </Button>
-              <Button type="submit">{editingPledge ? 'Save Changes' : 'Create Pledge'}</Button>
-            </div>
-          </form>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog
-        open={!!payingPledge}
-        onOpenChange={(value) => { if (!value) setPayingPledge(null); }}
-      >
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Record Pledge Payment</DialogTitle>
-            <DialogDescription>
-              {payingPledge
-                ? `${payingPledge.memberName} · ${getFundName(payingPledge.fundId)} · ${format(Number(payingPledge.remainingInKobo))} outstanding`
-                : ''}
-            </DialogDescription>
-          </DialogHeader>
-          <form onSubmit={submitPayment} className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium text-navy-700 mb-1">
-                Amount ({code})
-              </label>
-              <Input
-                type="number"
-                min={inputMin}
-                step={inputStep}
-                value={payForm.amount}
-                onChange={(e) => setPayForm({ ...payForm, amount: e.target.value })}
-                required
-              />
-              <p className="mt-1 text-xs text-navy-500">Entered in {symbol} ({code})</p>
-            </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+      {/* Both pledge dialogs submit to a write endpoint, so a read-only role
+          never mounts them. */}
+      <WriteGuard permissions={['pledge:create', 'pledge:update']}>
+        <Dialog open={open} onOpenChange={(value) => { setOpen(value); if (!value) setEditingPledge(null); }}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>{editingPledge ? 'Edit Pledge' : 'Create New Pledge'}</DialogTitle>
+              <DialogDescription>
+                {editingPledge
+                  ? 'Update the commitment details for this pledge.'
+                  : 'Record a new pledge commitment against a member and fund.'}
+              </DialogDescription>
+            </DialogHeader>
+            <form onSubmit={handleSubmit} className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-navy-700 mb-1">Method</label>
+                <label className="block text-sm font-medium text-navy-700 mb-1">
+                  Member
+                </label>
                 <select
-                  value={payForm.type}
-                  onChange={(e) => setPayForm({ ...payForm, type: e.target.value })}
+                  value={formData.memberId}
+                  onChange={(e) => selectMember(e.target.value)}
+                  required
                   className="w-full h-9 rounded-md border border-navy-300 bg-white px-3 py-1 text-sm"
                 >
-                  {CONTRIBUTION_TYPES.map((type) => (
-                    <option key={type} value={type}>
-                      {type.charAt(0) + type.slice(1).toLowerCase()}
+                  <option value="">Select a member</option>
+                  {members.map((member) => (
+                    <option key={member.id} value={member.id}>
+                      {member.fullName}
+                      {member.memberNumber ? ` (${member.memberNumber})` : ''}
                     </option>
                   ))}
                 </select>
+                {loadingFunds && <p className="mt-1 text-xs text-navy-500">Loading members...</p>}
+                {!loadingFunds && members.length === 0 && (
+                  <p className="mt-1 text-xs text-red-600">No members available. Add a member first.</p>
+                )}
               </div>
               <div>
-                <label className="block text-sm font-medium text-navy-700 mb-1">Date</label>
+                <label className="block text-sm font-medium text-navy-700 mb-1">
+                  Fund
+                </label>
+                <select
+                  value={formData.fundId}
+                  onChange={(e) => setFormData({ ...formData, fundId: e.target.value })}
+                  required
+                  className="w-full h-9 rounded-md border border-navy-300 bg-white px-3 py-1 text-sm"
+                >
+                  <option value="">Select a fund</option>
+                  {funds.map((fund) => (
+                    <option key={fund.id} value={fund.id}>
+                      {fund.name}
+                    </option>
+                  ))}
+                </select>
+                {loadingFunds && <p className="mt-1 text-xs text-navy-500">Loading funds...</p>}
+                {!loadingFunds && funds.length === 0 && (
+                  <p className="mt-1 text-xs text-red-600">No funds available. Create a fund first.</p>
+                )}
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-navy-700 mb-1">
+                  Amount ({code})
+                </label>
                 <Input
-                  type="date"
-                  value={payForm.date}
-                  onChange={(e) => setPayForm({ ...payForm, date: e.target.value })}
+                  type="number"
+                  min={inputMin}
+                  step={inputStep}
+                  value={formData.amountInKobo}
+                  onChange={(e) => setFormData({ ...formData, amountInKobo: e.target.value })}
                   required
                 />
               </div>
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-navy-700 mb-1">Notes</label>
-              <Input
-                value={payForm.notes}
-                onChange={(e) => setPayForm({ ...payForm, notes: e.target.value })}
-                placeholder="Optional notes"
-              />
-            </div>
-            {payError && (
-              <div className="p-3 text-sm text-red-700 bg-red-50 border border-red-200 rounded-md">
-                {payError}
+              <div className="flex flex-col sm:flex-row gap-2">
+                <div className="flex-1">
+                  <label className="block text-sm font-medium text-navy-700 mb-1">
+                    Start Date
+                  </label>
+                  <Input
+                    type="date"
+                    value={formData.startDate}
+                    onChange={(e) => setFormData({ ...formData, startDate: e.target.value })}
+                  />
+                </div>
+                <div className="flex-1">
+                  <label className="block text-sm font-medium text-navy-700 mb-1">
+                    End Date
+                  </label>
+                  <Input
+                    type="date"
+                    value={formData.endDate}
+                    onChange={(e) => setFormData({ ...formData, endDate: e.target.value })}
+                  />
+                </div>
               </div>
-            )}
-            <div className="flex justify-end gap-2">
-              <Button type="button" variant="outline" onClick={() => setPayingPledge(null)}>
-                Cancel
-              </Button>
-              <Button type="submit" disabled={submittingPayment}>
-                {submittingPayment ? 'Recording...' : 'Record Payment'}
-              </Button>
-            </div>
-          </form>
-        </DialogContent>
-      </Dialog>
+              <div className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  id="recurring"
+                  checked={formData.recurring}
+                  onChange={(e) => setFormData({ ...formData, recurring: e.target.checked })}
+                />
+                <label htmlFor="recurring" className="text-sm text-navy-700">
+                  Recurring pledge
+                </label>
+              </div>
+              {error && (
+                <div className="p-3 text-sm text-red-700 bg-red-50 border border-red-200 rounded-md">
+                  {error}
+                </div>
+              )}
+              <div className="flex justify-end gap-2">
+                <Button type="button" variant="outline" onClick={() => setOpen(false)}>
+                  Cancel
+                </Button>
+                <Button type="submit">{editingPledge ? 'Save Changes' : 'Create Pledge'}</Button>
+              </div>
+            </form>
+          </DialogContent>
+        </Dialog>
+      </WriteGuard>
+
+      <WriteGuard permission="contribution:create">
+        <Dialog
+          open={!!payingPledge}
+          onOpenChange={(value) => { if (!value) setPayingPledge(null); }}
+        >
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Record Pledge Payment</DialogTitle>
+              <DialogDescription>
+                {payingPledge
+                  ? `${payingPledge.memberName} · ${getFundName(payingPledge.fundId)} · ${format(Number(payingPledge.remainingInKobo))} outstanding`
+                  : ''}
+              </DialogDescription>
+            </DialogHeader>
+            <form onSubmit={submitPayment} className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-navy-700 mb-1">
+                  Amount ({code})
+                </label>
+                <Input
+                  type="number"
+                  min={inputMin}
+                  step={inputStep}
+                  value={payForm.amount}
+                  onChange={(e) => setPayForm({ ...payForm, amount: e.target.value })}
+                  required
+                />
+                <p className="mt-1 text-xs text-navy-500">Entered in {symbol} ({code})</p>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-sm font-medium text-navy-700 mb-1">Method</label>
+                  <select
+                    value={payForm.type}
+                    onChange={(e) => setPayForm({ ...payForm, type: e.target.value })}
+                    className="w-full h-9 rounded-md border border-navy-300 bg-white px-3 py-1 text-sm"
+                  >
+                    {CONTRIBUTION_TYPES.map((type) => (
+                      <option key={type} value={type}>
+                        {type.charAt(0) + type.slice(1).toLowerCase()}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-navy-700 mb-1">Date</label>
+                  <Input
+                    type="date"
+                    value={payForm.date}
+                    onChange={(e) => setPayForm({ ...payForm, date: e.target.value })}
+                    required
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-navy-700 mb-1">Notes</label>
+                <Input
+                  value={payForm.notes}
+                  onChange={(e) => setPayForm({ ...payForm, notes: e.target.value })}
+                  placeholder="Optional notes"
+                />
+              </div>
+              {payError && (
+                <div className="p-3 text-sm text-red-700 bg-red-50 border border-red-200 rounded-md">
+                  {payError}
+                </div>
+              )}
+              <div className="flex justify-end gap-2">
+                <Button type="button" variant="outline" onClick={() => setPayingPledge(null)}>
+                  Cancel
+                </Button>
+                <Button type="submit" disabled={submittingPayment}>
+                  {submittingPayment ? 'Recording...' : 'Record Payment'}
+                </Button>
+              </div>
+            </form>
+          </DialogContent>
+        </Dialog>
+      </WriteGuard>
     </div>
   );
 }

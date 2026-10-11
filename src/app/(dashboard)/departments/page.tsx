@@ -12,7 +12,8 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { apiFetch } from '@/lib/api';
-import { PermissionGuard } from '@/components/PermissionGuard';
+import { WriteGuard, canWriteAny } from '@/components/PermissionGuard';
+import { useAuthStore } from '@/store/useAuthStore';
 
 interface DepartmentHead {
   id: string;
@@ -51,6 +52,7 @@ function describeUser(user: User): string {
 }
 
 export default function DepartmentsPage() {
+  const { user } = useAuthStore();
   const [departments, setDepartments] = useState<Department[]>([]);
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
@@ -60,6 +62,9 @@ export default function DepartmentsPage() {
   const [editing, setEditing] = useState<Department | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [formData, setFormData] = useState(EMPTY_FORM);
+
+  // An auditor reviews the directory; reassigning a head is not permitted.
+  const showActions = canWriteAny(user?.role, ['department:update', 'department:delete']);
 
   const loadDepartments = useCallback(async () => {
     try {
@@ -156,9 +161,9 @@ export default function DepartmentsPage() {
       <Header
         title="Department Management"
         right={
-          <PermissionGuard permission="department:create">
+          <WriteGuard permission="department:create">
             <Button onClick={openCreate}>Add Department</Button>
-          </PermissionGuard>
+          </WriteGuard>
         }
       />
 
@@ -168,81 +173,84 @@ export default function DepartmentsPage() {
         </div>
       )}
 
-      <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>{editing ? 'Edit Department' : 'Create New Department'}</DialogTitle>
-            <DialogDescription>
-              Department names appear in the disbursement request form and budget filters.
-            </DialogDescription>
-          </DialogHeader>
-          <form onSubmit={handleSubmit} className="space-y-4">
-            {error && open && (
-              <div className="p-3 text-sm text-red-700 bg-red-50 border border-red-200 rounded-md">
-                {error}
-              </div>
-            )}
-            <div>
-              <label className="block text-sm font-medium text-navy-700 mb-1">
-                Department Name
-              </label>
-              <Input
-                value={formData.name}
-                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                placeholder="e.g. Worship &amp; Music"
-                required
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-navy-700 mb-1">
-                Description (optional)
-              </label>
-              <Input
-                value={formData.description}
-                onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                placeholder="What this department is responsible for"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-navy-700 mb-1">
-                Department Head
-              </label>
-              <select
-                value={formData.headId}
-                onChange={(e) => setFormData({ ...formData, headId: e.target.value })}
-                className="w-full h-9 rounded-md border border-navy-300 bg-white px-3 py-1 text-sm"
-                required
-              >
-                <option value="">Select a department head</option>
-                {loadingUsers && <option disabled>Loading users...</option>}
-                {!loadingUsers &&
-                  users.map((user) => (
-                    <option key={user.id} value={user.id}>
-                      {describeUser(user)}
-                    </option>
-                  ))}
-              </select>
-              <p className="mt-1 text-xs text-navy-500">
-                The head is matched by user ID. Department Heads only see and submit disbursements for
-                the department assigned to them here.
-              </p>
-              {!loadingUsers && users.length === 0 && (
-                <p className="mt-1 text-xs text-red-600">
-                  No users available. Create a user with the Department Head role first.
-                </p>
+      {/* Reassigning the head of a department changes who can spend from it. */}
+      <WriteGuard permissions={['department:create', 'department:update']}>
+        <Dialog open={open} onOpenChange={setOpen}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>{editing ? 'Edit Department' : 'Create New Department'}</DialogTitle>
+              <DialogDescription>
+                Department names appear in the disbursement request form and budget filters.
+              </DialogDescription>
+            </DialogHeader>
+            <form onSubmit={handleSubmit} className="space-y-4">
+              {error && open && (
+                <div className="p-3 text-sm text-red-700 bg-red-50 border border-red-200 rounded-md">
+                  {error}
+                </div>
               )}
-            </div>
-            <div className="flex justify-end gap-2">
-              <Button type="button" variant="outline" onClick={() => setOpen(false)}>
-                Cancel
-              </Button>
-              <Button type="submit" disabled={submitting}>
-                {editing ? 'Save Changes' : 'Create Department'}
-              </Button>
-            </div>
-          </form>
-        </DialogContent>
-      </Dialog>
+              <div>
+                <label className="block text-sm font-medium text-navy-700 mb-1">
+                  Department Name
+                </label>
+                <Input
+                  value={formData.name}
+                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                  placeholder="e.g. Worship &amp; Music"
+                  required
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-navy-700 mb-1">
+                  Description (optional)
+                </label>
+                <Input
+                  value={formData.description}
+                  onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                  placeholder="What this department is responsible for"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-navy-700 mb-1">
+                  Department Head
+                </label>
+                <select
+                  value={formData.headId}
+                  onChange={(e) => setFormData({ ...formData, headId: e.target.value })}
+                  className="w-full h-9 rounded-md border border-navy-300 bg-white px-3 py-1 text-sm"
+                  required
+                >
+                  <option value="">Select a department head</option>
+                  {loadingUsers && <option disabled>Loading users...</option>}
+                  {!loadingUsers &&
+                    users.map((user) => (
+                      <option key={user.id} value={user.id}>
+                        {describeUser(user)}
+                      </option>
+                    ))}
+                </select>
+                <p className="mt-1 text-xs text-navy-500">
+                  The head is matched by user ID. Department Heads only see and submit disbursements for
+                  the department assigned to them here.
+                </p>
+                {!loadingUsers && users.length === 0 && (
+                  <p className="mt-1 text-xs text-red-600">
+                    No users available. Create a user with the Department Head role first.
+                  </p>
+                )}
+              </div>
+              <div className="flex justify-end gap-2">
+                <Button type="button" variant="outline" onClick={() => setOpen(false)}>
+                  Cancel
+                </Button>
+                <Button type="submit" disabled={submitting}>
+                  {editing ? 'Save Changes' : 'Create Department'}
+                </Button>
+              </div>
+            </form>
+          </DialogContent>
+        </Dialog>
+      </WriteGuard>
 
       {loading && (
         <div className="bg-white rounded-lg border border-navy-200 p-8 text-center">
@@ -265,15 +273,17 @@ export default function DepartmentsPage() {
                 <th className="px-4 py-3 text-left text-xs font-semibold text-navy-700 uppercase tracking-wider">
                   Head
                 </th>
-                <th className="px-4 py-3 text-right text-xs font-semibold text-navy-700 uppercase tracking-wider">
-                  Actions
-                </th>
+                {showActions && (
+                  <th className="px-4 py-3 text-right text-xs font-semibold text-navy-700 uppercase tracking-wider">
+                    Actions
+                  </th>
+                )}
               </tr>
             </thead>
             <tbody className="divide-y divide-navy-200">
               {departments.length === 0 ? (
                 <tr>
-                  <td colSpan={4} className="px-4 py-8 text-center text-navy-500">
+                  <td colSpan={showActions ? 4 : 3} className="px-4 py-8 text-center text-navy-500">
                     No departments found
                   </td>
                 </tr>
@@ -289,24 +299,26 @@ export default function DepartmentsPage() {
                     <td className="px-4 py-3 text-sm text-navy-600">
                       {department.head?.name || department.head?.email || '-'}
                     </td>
-                    <td className="px-4 py-3">
-                      <div className="flex flex-wrap justify-end gap-2">
-                        <PermissionGuard permission="department:update">
-                          <Button variant="outline" size="sm" onClick={() => openEdit(department)}>
-                            Edit
-                          </Button>
-                        </PermissionGuard>
-                        <PermissionGuard permission="department:delete">
-                          <Button
-                            variant="destructive"
-                            size="sm"
-                            onClick={() => handleDelete(department)}
-                          >
-                            Delete
-                          </Button>
-                        </PermissionGuard>
-                      </div>
-                    </td>
+                    {showActions && (
+                      <td className="px-4 py-3">
+                        <div className="flex flex-wrap justify-end gap-2">
+                          <WriteGuard permission="department:update">
+                            <Button variant="outline" size="sm" onClick={() => openEdit(department)}>
+                              Edit
+                            </Button>
+                          </WriteGuard>
+                          <WriteGuard permission="department:delete">
+                            <Button
+                              variant="destructive"
+                              size="sm"
+                              onClick={() => handleDelete(department)}
+                            >
+                              Delete
+                            </Button>
+                          </WriteGuard>
+                        </div>
+                      </td>
+                    )}
                   </tr>
                 ))
               )}
